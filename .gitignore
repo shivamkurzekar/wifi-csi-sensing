@@ -1,0 +1,12 @@
+# ESP-IDF build output -- regenerate with `idf.py build`
+build/
+
+# sdkconfig backup written automatically by idf.py on every config change
+sdkconfig.old
+
+# Real WiFi credentials -- never commit these. See main/wifi_credentials.h.example
+main/wifi_credentials.h
+
+# Python
+__pycache__/
+*.pyc
