@@ -50,14 +50,28 @@
 #define PHASE_HISTORY_LEN      32    /* ring buffer size */
 #define MOTION_WINDOW          20    /* samples used for the variance window */
 
-#define TOPK_REEVAL_FRAMES     100   /* re-pick the noisiest subcarrier this often */
+/*
+ * The noisiest-subcarrier pick happens once, after this many warmup
+ * frames, and is then kept for the session -- see the fixed-subcarrier
+ * note where this is consumed, below, for why it's not periodic.
+ *
+ * It can't be the full calibration window either: at this network's
+ * actual (sparse, irregular) packet rate, waiting that long left
+ * s_primary_subcarrier sitting at its default of index 0 for a very long
+ * time. Verified on real hardware (2026-08-16 test flash): index 0 is
+ * consistently a near-dead edge subcarrier (~0 amplitude, see
+ * csi_test/docs/v1.md), so a flat zero-variance phase signal was feeding
+ * "motion energy" the whole time -- it could never detect motion, ever,
+ * regardless of what happened in the room.
+ */
+#define TOPK_WARMUP_FRAMES     20
 
 /*
  * Calibration is time-based, not frame-count-based. RuView assumes a
  * steady ~20 Hz capture rate (1200 frames = 60s). Our own capture of this
  * exact network showed wildly irregular gaps (0.2s to 2.6s between
- * packets -- see csi_test/docs/v1.md §... the sample capture), so a fixed
- * frame count would take an unpredictable amount of wall-clock time.
+ * packets -- see csi_test/docs/v1.md's capture-analysis section), so a
+ * fixed frame count would take an unpredictable amount of wall-clock time.
  * Watching the clock instead makes the calibration window's *meaning*
  * (60 seconds of ambient observation) hold regardless of traffic rate.
  */
@@ -130,14 +144,15 @@ static float s_prev_phase[MAX_SUBCARRIERS];
 static bool  s_have_prev_phase[MAX_SUBCARRIERS];
 static int   s_prev_num_subcarriers = -1;
 
-/* Welford running variance per subcarrier, reset every TOPK_REEVAL_FRAMES
- * frames so the "noisiest subcarrier" pick tracks recent conditions
- * rather than an all-time average. */
+/* Welford running variance per subcarrier, accumulated only during the
+ * warmup window and used for exactly one noisiest-subcarrier pick -- see
+ * the v1 fixed-subcarrier note where this is consumed, below. */
 static double s_sc_mean[MAX_SUBCARRIERS];
 static double s_sc_m2[MAX_SUBCARRIERS];
 static uint32_t s_sc_count[MAX_SUBCARRIERS];
 static uint32_t s_frames_since_reeval = 0;
 static int s_primary_subcarrier = 0;
+static bool s_did_first_reeval = false;
 
 /* Ring buffer of the primary subcarrier's unwrapped phase. */
 static float s_phase_history[PHASE_HISTORY_LEN];
@@ -178,15 +193,6 @@ static double welford_variance(int idx)
 {
     if (s_sc_count[idx] < 2) return 0.0;
     return s_sc_m2[idx] / (double)(s_sc_count[idx] - 1);
-}
-
-static void welford_reset_all(int num_subcarriers)
-{
-    for (int i = 0; i < num_subcarriers && i < MAX_SUBCARRIERS; i++) {
-        s_sc_mean[i] = 0.0;
-        s_sc_m2[i] = 0.0;
-        s_sc_count[i] = 0;
-    }
 }
 
 /*
@@ -253,22 +259,49 @@ static void process_record(const csi_record_t *record)
         welford_update(i, (double)unwrapped);
     }
 
-    /* Periodically re-pick the noisiest subcarrier and reset the Welford
-     * accumulators so the pick reflects recent behaviour, not all-time. */
-    s_frames_since_reeval++;
-    if (s_frames_since_reeval >= TOPK_REEVAL_FRAMES) {
-        double best_var = -1.0;
-        int best_idx = 0;
-        for (int i = 0; i < num_subcarriers; i++) {
-            double v = welford_variance(i);
-            if (v > best_var) {
-                best_var = v;
-                best_idx = i;
+    /* Pick the noisiest subcarrier ONCE, after a short warmup, then keep it
+     * for the rest of the session (until reboot). v1 originally re-picked
+     * every TOPK_REEVAL_FRAMES to track "recent behaviour" -- verified on
+     * real hardware (2026-08-16) that this is actively harmful: the
+     * calibration accumulator (below) sums motion_energy across the whole
+     * calibration window regardless of which subcarrier produced it, so a
+     * mid-calibration reselection mixes two unrelated subcarriers' noise
+     * levels into one meaningless "ambient baseline". A single fixed pick
+     * keeps the calibrated threshold coherent. Adaptive re-tracking (with
+     * a coordinated recalibration when it fires) is a reasonable v2, not
+     * a silent periodic swap. */
+    if (!s_did_first_reeval) {
+        s_frames_since_reeval++;
+        if (s_frames_since_reeval >= TOPK_WARMUP_FRAMES) {
+            double best_var = -1.0;
+            int best_idx = 0;
+            for (int i = 0; i < num_subcarriers; i++) {
+                double v = welford_variance(i);
+                if (v > best_var) {
+                    best_var = v;
+                    best_idx = i;
+                }
             }
+            s_primary_subcarrier = best_idx;
+            s_did_first_reeval = true;
+
+            /* The ring buffer up to this point holds phase from whatever
+             * subcarrier was tracked before lock-in (index 0's default).
+             * Feeding that into a variance window against the newly locked
+             * subcarrier produces a fake discontinuity spike on the very
+             * next read -- verified on real hardware (2026-08-16): this
+             * spike got baked into the calibration average and inflated
+             * the learned threshold ~4x above the real steady-state range.
+             * Clear it so the first post-lock reading is real. */
+            s_history_idx = 0;
+            s_history_len = 0;
+        } else {
+            /* Still warming up: nothing to measure yet. */
+            printf("PRESENCE,%lld,%d,%d,%.5f,%.5f,%d,%d\n",
+                   (long long)record->timestamp_us, record->rssi,
+                   s_primary_subcarrier, 0.0f, 0.0f, 0, 0);
+            return;
         }
-        s_primary_subcarrier = best_idx;
-        welford_reset_all(num_subcarriers);
-        s_frames_since_reeval = 0;
     }
 
     if (s_primary_subcarrier >= num_subcarriers) {
@@ -297,7 +330,9 @@ static void process_record(const csi_record_t *record)
         s_motion_energy = (var > 0.0) ? (float)var : 0.0f;
     }
 
-    /* Time-based adaptive calibration. */
+    /* Time-based adaptive calibration. Clock starts at lock-in, not boot --
+     * same reasoning as the ring-buffer reset above: don't let anything
+     * from before we had a real subcarrier pollute "ambient". */
     if (s_first_frame_us < 0) s_first_frame_us = record->timestamp_us;
     double elapsed_s = (record->timestamp_us - s_first_frame_us) / 1e6;
 
@@ -313,6 +348,17 @@ static void process_record(const csi_record_t *record)
             s_adaptive_threshold = (float)(mean + PRESENCE_SIGMA_MULT * sigma);
             if (s_adaptive_threshold < 0.001f) s_adaptive_threshold = 0.001f;
             s_calibrated = true;
+
+            /* Whatever presence_detected latched to during pre-calibration
+             * (using the crude PRESENCE_DEFAULT_THRESH) isn't a real
+             * reading against the real threshold -- verified on real
+             * hardware (2026-08-16): it stayed latched "present" for
+             * PRESENCE_CLEAR_FRAMES frames after calibration completed,
+             * a needless startup artifact. Start clean against the real
+             * threshold instead of forcing the debounce to work it off. */
+            s_presence_detected = false;
+            s_below_count = 0;
+
             ESP_LOGI(TAG, "Calibrated after %.1fs (%lu samples): threshold=%.5f",
                      elapsed_s, (unsigned long)s_calib_count, s_adaptive_threshold);
         } else {
