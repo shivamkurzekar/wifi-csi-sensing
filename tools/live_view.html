@@ -1,0 +1,267 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>analyse_csi — live</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --series-2:       #eb6834;
+    --seq-100: #cde2fb; --seq-400: #3987e5; --seq-700: #0d366b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-2:       #d95926;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page-plane:     #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --series-2:       #d95926;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 20px 16px 48px;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header h1 { font-size: 20px; margin: 0 0 4px; }
+  header p { font-size: 13px; color: var(--text-secondary); margin: 0 0 18px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 10px; margin-bottom: 20px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .tile .label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .tile .value { font-size: 18px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 16px 12px; margin-bottom: 18px; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; }
+  .card .desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; }
+
+  canvas { width: 100%; display: block; border-radius: 6px; }
+  #waterfall { height: 220px; }
+  #rssi-chart { height: 160px; }
+  #var-chart { height: 160px; }
+
+  .status { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .status.stale { color: var(--series-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>analyse_csi — live</h1>
+    <p>Polling this machine every ~1s. Waterfall = recent packets, subcarrier amplitude as color. Charts below = the whole session so far.</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>Live waterfall</h2>
+    <div class="desc">X = recent packets (newest on the right), Y = subcarrier index, color = amplitude.</div>
+    <canvas id="waterfall"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>RSSI — whole session</h2>
+    <canvas id="rssi-chart"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Variability — whole session</h2>
+    <div class="desc">Spread of amplitude across subcarriers within each packet (same metric csi_test's report uses).</div>
+    <canvas id="var-chart"></canvas>
+  </div>
+
+  <div class="status" id="status">connecting...</div>
+</div>
+
+<script>
+const MAX_SUBCARRIERS = 256;
+
+function seqColor(t) {
+  const stops = ['#cde2fb','#9ec5f4','#6da7ec','#3987e5','#2a78d6','#1c5cab','#0d366b'];
+  const n = stops.length - 1;
+  const pos = Math.min(Math.max(t,0),1) * n;
+  const i = Math.floor(pos);
+  const frac = pos - i;
+  const c1 = hexToRgb(stops[Math.min(i,n)]);
+  const c2 = hexToRgb(stops[Math.min(i+1,n)]);
+  const r = Math.round(c1[0] + (c2[0]-c1[0])*frac);
+  const g = Math.round(c1[1] + (c2[1]-c1[1])*frac);
+  const b = Math.round(c1[2] + (c2[2]-c1[2])*frac);
+  return `rgb(${r},${g},${b})`;
+}
+function hexToRgb(hex) {
+  const v = hex.replace('#','');
+  return [parseInt(v.slice(0,2),16), parseInt(v.slice(2,4),16), parseInt(v.slice(4,6),16)];
+}
+
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 900;
+  const cssH = canvas.clientHeight || 200;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, cssW, cssH };
+}
+
+function drawWaterfall(recent) {
+  const canvas = document.getElementById('waterfall');
+  const { ctx, cssW, cssH } = setupCanvas(canvas);
+  const style = getComputedStyle(document.documentElement);
+  ctx.fillStyle = style.getPropertyValue('--surface-1').trim();
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (!recent.length) return;
+
+  const nCols = recent.length;
+  const nRows = MAX_SUBCARRIERS;
+  const colW = cssW / nCols;
+  const rowH = cssH / nRows;
+
+  let flat = [];
+  for (const f of recent) for (const a of f.amplitudes) flat.push(a);
+  flat.sort((a,b) => a - b);
+  const domainMax = flat.length ? (flat[Math.floor(flat.length * 0.95)] || 1) : 1;
+
+  recent.forEach((f, c) => {
+    f.amplitudes.forEach((a, r) => {
+      if (r >= nRows) return;
+      ctx.fillStyle = seqColor(a / domainMax);
+      ctx.fillRect(c*colW, r*rowH, colW+0.6, rowH+0.6);
+    });
+  });
+}
+
+function drawLineChart(canvasId, times, values, colorVar, unit) {
+  const canvas = document.getElementById(canvasId);
+  const { ctx, cssW, cssH } = setupCanvas(canvas);
+  const style = getComputedStyle(document.documentElement);
+  const surface = style.getPropertyValue('--surface-1').trim();
+  const grid = style.getPropertyValue('--gridline').trim();
+  const muted = style.getPropertyValue('--text-muted').trim();
+  const color = style.getPropertyValue(colorVar).trim();
+
+  ctx.fillStyle = surface;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (times.length < 2) {
+    ctx.fillStyle = muted;
+    ctx.font = '12px system-ui';
+    ctx.fillText('waiting for data...', 10, cssH/2);
+    return;
+  }
+
+  const padL = 42, padR = 8, padT = 8, padB = 18;
+  const plotW = cssW - padL - padR, plotH = cssH - padT - padB;
+  const tMin = times[0], tMax = times[times.length-1];
+  const vMin = Math.min(...values), vMax = Math.max(...values);
+  const vPad = (vMax - vMin) * 0.1 || 1;
+  const yMin = vMin - vPad, yMax = vMax + vPad;
+
+  const xScale = t => padL + (t - tMin) / (tMax - tMin || 1) * plotW;
+  const yScale = v => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH;
+
+  ctx.strokeStyle = grid;
+  ctx.lineWidth = 1;
+  ctx.fillStyle = muted;
+  ctx.font = '10px system-ui';
+  for (let i = 0; i <= 3; i++) {
+    const v = yMin + (yMax - yMin) * i / 3;
+    const y = yScale(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(cssW - padR, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), 2, y + 3);
+  }
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < times.length; i++) {
+    const x = xScale(times[i]), y = yScale(values[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = muted;
+  ctx.fillText(tMin.toFixed(0)+'s', padL, cssH - 4);
+  ctx.textAlign = 'right';
+  ctx.fillText(tMax.toFixed(0)+'s', cssW - padR, cssH - 4);
+  ctx.textAlign = 'left';
+}
+
+function renderTiles(data) {
+  const el = document.getElementById('tiles');
+  const tiles = [
+    ['Uptime', data.uptime_s.toFixed(0) + 's'],
+    ['Frames decoded', data.frames_ok],
+    ['Resyncs', data.resync_count],
+    ['Recent window', data.recent.length],
+  ];
+  el.innerHTML = tiles.map(([label, value]) => `
+    <div class="tile"><div class="label">${label}</div><div class="value">${value}</div></div>
+  `).join('');
+}
+
+let lastUpdate = 0;
+
+async function poll() {
+  try {
+    const res = await fetch('/data.json', { cache: 'no-store' });
+    const data = await res.json();
+    lastUpdate = Date.now();
+
+    renderTiles(data);
+    drawWaterfall(data.recent);
+    drawLineChart('rssi-chart', data.history.t, data.history.rssi, '--series-1', 'dBm');
+    drawLineChart('var-chart', data.history.t, data.history.variability, '--series-2', '');
+
+    document.getElementById('status').textContent = `updated ${new Date().toLocaleTimeString()}`;
+    document.getElementById('status').classList.remove('stale');
+
+    setTimeout(poll, data.poll_hint_ms || 1000);
+  } catch (e) {
+    document.getElementById('status').textContent = 'connection lost, retrying...';
+    document.getElementById('status').classList.add('stale');
+    setTimeout(poll, 2000);
+  }
+}
+
+window.addEventListener('resize', () => { /* redraw happens on next poll anyway */ });
+poll();
+</script>
+</body>
+</html>
