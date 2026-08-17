@@ -68,9 +68,13 @@
   .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 16px 12px; margin-bottom: 18px; }
   .card h2 { font-size: 14px; margin: 0 0 2px; }
   .card .desc { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+  .legend-grad-phase { height: 10px; width: 200px; border-radius: 5px;
+    background: linear-gradient(90deg, hsl(0,65%,55%), hsl(90,65%,55%), hsl(180,65%,55%), hsl(270,65%,55%), hsl(360,65%,55%)); }
 
   canvas { width: 100%; display: block; border-radius: 6px; }
   #waterfall { height: 220px; }
+  #phase-waterfall { height: 220px; }
   #rssi-chart-recent { height: 140px; }
   #var-chart-recent { height: 140px; }
   #rssi-chart { height: 160px; }
@@ -93,6 +97,17 @@
     <h2>Live waterfall</h2>
     <div class="desc">X = recent packets over time (newest on the right), Y = subcarrier index, color = amplitude. Watch for a ripple sweeping across many rows at once -- that's motion; a static pattern is an empty, unchanging channel.</div>
     <canvas id="waterfall"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Phase waterfall</h2>
+    <div class="desc">Same layout as the amplitude waterfall, but color = raw phase, on a color <em>wheel</em> rather than a light-to-dark scale -- phase is circular (-&pi; and +&pi; are the same physical angle), so the two ends of the color range meet. Heads up: our own 50-packet study (see docs/data/raw50-capture-summary.md) found raw phase between independent packets looks dominated by per-packet timing/frequency offset rather than physical motion -- expect this to look like fairly uncorrelated color noise column to column until a calibration step exists to remove that offset. Watching it directly is exactly how to confirm or challenge that finding.</div>
+    <canvas id="phase-waterfall"></canvas>
+    <div class="legend-row">
+      <span>-&pi;</span>
+      <div class="legend-grad-phase"></div>
+      <span>+&pi; (same color as -&pi;)</span>
+    </div>
   </div>
 
   <div class="card">
@@ -142,6 +157,17 @@ function hexToRgb(hex) {
   return [parseInt(v.slice(0,2),16), parseInt(v.slice(2,4),16), parseInt(v.slice(4,6),16)];
 }
 
+// Phase is circular (-pi and +pi are the same physical angle), unlike
+// amplitude's straight low-to-high magnitude. A sequential light-to-dark
+// ramp would make the wrap-around point look like two opposite extremes
+// instead of the same point -- so phase gets a hue wheel instead, where
+// angle maps directly to hue and the two ends of the range meet at the
+// same color, same as the data itself wraps.
+function phaseColor(phase) {
+  const hue = ((phase + Math.PI) / (2 * Math.PI)) * 360;
+  return `hsl(${hue.toFixed(1)}, 65%, 55%)`;
+}
+
 function setupCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 900;
@@ -151,6 +177,37 @@ function setupCanvas(canvas) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return { ctx, cssW, cssH };
+}
+
+// Shared by both waterfalls: subcarrier index on the left (Y), real clock
+// time along the bottom (X) -- a few ticks, not a linear time scale (each
+// column is one packet, evenly spaced regardless of the real gap between
+// packets; see docs/v1.md for why that matters when reading either chart).
+function drawWaterfallAxes(ctx, cssW, cssH, padL, padR, padT, plotH, nRows, nCols, recent, sessionStartMs, muted) {
+  ctx.fillStyle = muted;
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'right';
+  const yTicks = [0, Math.floor(nRows/2), nRows];
+  yTicks.forEach(r => {
+    const y = padT + (r / nRows) * plotH;
+    ctx.fillText(String(r), padL - 4, Math.min(Math.max(y, padT+8), padT+plotH));
+  });
+
+  const plotW = cssW - padL - padR;
+  const colW = plotW / nCols;
+  ctx.textAlign = 'center';
+  const xTicks = Math.min(4, nCols);
+  for (let i = 0; i < xTicks; i++) {
+    const frac = xTicks === 1 ? 0 : i / (xTicks - 1);
+    const idx = Math.round(frac * (nCols - 1));
+    const x = padL + (idx + 0.5) * colW;
+    const clock = formatClockTime(new Date(sessionStartMs + recent[idx].t * 1000));
+    const align = i === 0 ? 'left' : (i === xTicks - 1 ? 'right' : 'center');
+    ctx.textAlign = align;
+    const labelX = align === 'left' ? padL : (align === 'right' ? cssW - padR : x);
+    ctx.fillText(clock, labelX, cssH - 4);
+  }
+  ctx.textAlign = 'left';
 }
 
 function drawWaterfall(recent, sessionStartMs) {
@@ -164,8 +221,6 @@ function drawWaterfall(recent, sessionStartMs) {
 
   if (!recent.length) return;
 
-  // Reserve margins for axes: subcarrier index on the left (Y), clock
-  // time along the bottom (X) -- the heatmap itself lives inside padding.
   const padL = 32, padR = 4, padT = 4, padB = 16;
   const plotW = cssW - padL - padR, plotH = cssH - padT - padB;
 
@@ -187,30 +242,39 @@ function drawWaterfall(recent, sessionStartMs) {
     });
   });
 
-  // Y axis: subcarrier index, a few ticks.
-  ctx.fillStyle = muted;
-  ctx.font = '9px system-ui';
-  ctx.textAlign = 'right';
-  const yTicks = [0, Math.floor(nRows/2), nRows];
-  yTicks.forEach(r => {
-    const y = padT + (r / nRows) * plotH;
-    ctx.fillText(String(r), padL - 4, Math.min(Math.max(y, padT+8), padT+plotH));
+  drawWaterfallAxes(ctx, cssW, cssH, padL, padR, padT, plotH, nRows, nCols, recent, sessionStartMs, muted);
+}
+
+function drawPhaseWaterfall(recent, sessionStartMs) {
+  const canvas = document.getElementById('phase-waterfall');
+  const { ctx, cssW, cssH } = setupCanvas(canvas);
+  const style = getComputedStyle(document.documentElement);
+  const surface = style.getPropertyValue('--surface-1').trim();
+  const muted = style.getPropertyValue('--text-muted').trim();
+  ctx.fillStyle = surface;
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (!recent.length || !recent[0].phases) return;
+
+  const padL = 32, padR = 4, padT = 4, padB = 16;
+  const plotW = cssW - padL - padR, plotH = cssH - padT - padB;
+
+  const nCols = recent.length;
+  const nRows = MAX_SUBCARRIERS;
+  const colW = plotW / nCols;
+  const rowH = plotH / nRows;
+
+  // No percentile clamp here -- phase's range is fixed (-pi to +pi) by
+  // definition, unlike amplitude's open-ended magnitude.
+  recent.forEach((f, c) => {
+    f.phases.forEach((p, r) => {
+      if (r >= nRows) return;
+      ctx.fillStyle = phaseColor(p);
+      ctx.fillRect(padL + c*colW, padT + r*rowH, colW+0.6, rowH+0.6);
+    });
   });
 
-  // X axis: real clock time, a few evenly spaced ticks across the visible window.
-  ctx.textAlign = 'center';
-  const xTicks = Math.min(4, nCols);
-  for (let i = 0; i < xTicks; i++) {
-    const frac = xTicks === 1 ? 0 : i / (xTicks - 1);
-    const idx = Math.round(frac * (nCols - 1));
-    const x = padL + (idx + 0.5) * colW;
-    const clock = formatClockTime(new Date(sessionStartMs + recent[idx].t * 1000));
-    const align = i === 0 ? 'left' : (i === xTicks - 1 ? 'right' : 'center');
-    ctx.textAlign = align;
-    const labelX = align === 'left' ? padL : (align === 'right' ? cssW - padR : x);
-    ctx.fillText(clock, labelX, cssH - 4);
-  }
-  ctx.textAlign = 'left';
+  drawWaterfallAxes(ctx, cssW, cssH, padL, padR, padT, plotH, nRows, nCols, recent, sessionStartMs, muted);
 }
 
 function formatClockTime(date) {
@@ -311,6 +375,7 @@ async function poll() {
 
     renderTiles(data);
     drawWaterfall(data.recent, sessionStartMs);
+    drawPhaseWaterfall(data.recent, sessionStartMs);
 
     const recentT = data.recent.map(f => f.t);
     const recentRssi = data.recent.map(f => f.rssi);

@@ -79,6 +79,7 @@ class SharedState:
                 "rssi": frame.rssi,
                 "channel": frame.channel,
                 "amplitudes": amps,
+                "phases": phases,
                 "variability": round(variability, 3),
             })
 
