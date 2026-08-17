@@ -2,25 +2,35 @@
 
 This is a five-part reference explaining **why** WiFi Channel State
 Information (CSI) sensing works, from the physics of a radio wave up to
-the specific bytes the ESP32-S3 hands your callback in `csi_test` and
-`csi_presence`. It is written for engineers who can already read C and
-Python but have never had to reason about phase, subcarriers, or
-multipath.
+the specific bytes the ESP32-S3 hands your callback in `csi_test`,
+`csi_presence`, and `analyse_csi`. It is written for engineers who can
+already read C and Python but have never had to reason about phase,
+subcarriers, or multipath.
 
-These documents are deliberately separated from the two firmware
-projects' own documentation. The split is:
+These documents are deliberately separated from each firmware project's
+own documentation, and are duplicated identically into all three
+projects' repos (each is self-contained on GitHub rather than depending
+on a shared local folder). The split is:
 
-- **This directory (`Docs/csi-learning/`)** — *why the signal behaves the
+- **This directory (`docs/csi-learning/`)** — *why the signal behaves the
   way it does*. Physics, math, and signal-processing theory. No project
   source code, no build instructions, nothing that changes when the
   firmware changes.
-- **`projects/csi_test/docs/`** and **`projects/csi_presence/docs/`** —
-  *how a specific piece of code turns that physics into a decision*. Build
-  instructions, the actual C structures, the specific algorithm each
-  project runs, real-hardware test results, known bugs. (At the time of
-  writing, each project's documentation lives in a single file named
-  `v1.md` rather than a numbered series — read those directly for "how the
-  code works.")
+- **Each project's own `docs/`** — *how a specific piece of code turns
+  that physics into a decision*. Build instructions, the actual C
+  structures, the specific algorithm each project runs, real-hardware
+  test results, known bugs:
+  - [`csi_test`](https://github.com/shivamkurzekar/csi_test/tree/main/docs) —
+    [`v1.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/v1.md)
+    (overview, build/run) and
+    [`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/02-algorithms-and-concepts.md)
+    (deep dive)
+  - [`csi_presence`](https://github.com/shivamkurzekar/csi_presence/tree/master/docs) —
+    [`v1.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/v1.md) and
+    [`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/02-algorithms-and-concepts.md)
+  - [`analyse_csi`](https://github.com/shivamkurzekar/analyse_csi/tree/master/docs) —
+    [`v1.md`](https://github.com/shivamkurzekar/analyse_csi/blob/master/docs/v1.md)
+    (no separate deep-dive doc yet for this project)
 
 Read this directory first if a term like "subcarrier," "phase
 unwrapping," or "channel estimate" is doing a lot of unexplained work in
