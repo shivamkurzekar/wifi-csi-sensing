@@ -79,6 +79,7 @@ class SharedState:
                 "rssi": frame.rssi,
                 "channel": frame.channel,
                 "amplitudes": amps,
+                "variability": round(variability, 3),
             })
 
             self.history_t.append(t)
