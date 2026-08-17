@@ -167,7 +167,12 @@ function drawWaterfall(recent) {
   });
 }
 
-function drawLineChart(canvasId, times, values, colorVar, unit) {
+function formatClockTime(date) {
+  // HH:MM:SS, 24h, local time -- matches what a user watching the room would read off a clock
+  return date.toLocaleTimeString([], { hour12: false });
+}
+
+function drawLineChart(canvasId, times, values, colorVar, unit, sessionStartMs) {
   const canvas = document.getElementById(canvasId);
   const { ctx, cssW, cssH } = setupCanvas(canvas);
   const style = getComputedStyle(document.documentElement);
@@ -216,16 +221,28 @@ function drawLineChart(canvasId, times, values, colorVar, unit) {
   }
   ctx.stroke();
 
+  // X axis: real wall-clock time (session start + elapsed seconds), a few
+  // evenly-spaced ticks rather than just the two endpoints.
   ctx.fillStyle = muted;
-  ctx.fillText(tMin.toFixed(0)+'s', padL, cssH - 4);
-  ctx.textAlign = 'right';
-  ctx.fillText(tMax.toFixed(0)+'s', cssW - padR, cssH - 4);
+  const xTicks = Math.min(5, times.length);
+  ctx.textAlign = 'center';
+  for (let i = 0; i < xTicks; i++) {
+    const frac = xTicks === 1 ? 0 : i / (xTicks - 1);
+    const t = tMin + (tMax - tMin) * frac;
+    const x = xScale(t);
+    const clock = formatClockTime(new Date(sessionStartMs + t * 1000));
+    const align = i === 0 ? 'left' : (i === xTicks - 1 ? 'right' : 'center');
+    ctx.textAlign = align;
+    const labelX = align === 'left' ? padL : (align === 'right' ? cssW - padR : x);
+    ctx.fillText(clock, labelX, cssH - 4);
+  }
   ctx.textAlign = 'left';
 }
 
 function renderTiles(data) {
   const el = document.getElementById('tiles');
   const tiles = [
+    ['Session started', formatClockTime(new Date(Date.parse(data.session_start_iso)))],
     ['Uptime', data.uptime_s.toFixed(0) + 's'],
     ['Frames decoded', data.frames_ok],
     ['Resyncs', data.resync_count],
@@ -244,10 +261,12 @@ async function poll() {
     const data = await res.json();
     lastUpdate = Date.now();
 
+    const sessionStartMs = Date.parse(data.session_start_iso);
+
     renderTiles(data);
     drawWaterfall(data.recent);
-    drawLineChart('rssi-chart', data.history.t, data.history.rssi, '--series-1', 'dBm');
-    drawLineChart('var-chart', data.history.t, data.history.variability, '--series-2', '');
+    drawLineChart('rssi-chart', data.history.t, data.history.rssi, '--series-1', 'dBm', sessionStartMs);
+    drawLineChart('var-chart', data.history.t, data.history.variability, '--series-2', '', sessionStartMs);
 
     document.getElementById('status').textContent = `updated ${new Date().toLocaleTimeString()}`;
     document.getElementById('status').classList.remove('stale');

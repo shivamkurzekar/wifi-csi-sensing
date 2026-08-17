@@ -18,6 +18,7 @@ Neither side blocks the other for more than a few microseconds.
 """
 
 import argparse
+import csv
 import http.server
 import json
 import socket
@@ -25,6 +26,7 @@ import statistics
 import threading
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 import serial
@@ -37,7 +39,7 @@ POLL_HINT_MS = 1000          # how often the page should poll (advisory, sent in
 
 
 class SharedState:
-    def __init__(self):
+    def __init__(self, log_path: Path):
         self.lock = threading.Lock()
         self.recent = deque(maxlen=RECENT_WINDOW)   # dicts: t, rssi, channel, amplitudes
         self.history_t = []
@@ -46,10 +48,24 @@ class SharedState:
         self.frames_ok = 0
         self.resync_count = 0
         self.start_time = time.time()
+        self.session_start_iso = datetime.now().isoformat()
         self.first_device_us = None
 
+        # Every frame is written to disk immediately (flushed per row) --
+        # the file is safe to read/tail mid-session, same pattern as
+        # csi_presence's live_log.py.
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_file = open(log_path, "w", newline="")
+        self.log_writer = csv.writer(self.log_file)
+        self.log_writer.writerow([
+            "host_time", "t_s", "device_us", "rssi", "channel",
+            "first_word_invalid", "num_subcarriers", "amplitudes", "phases",
+        ])
+        self.log_file.flush()
+        print(f"Logging every frame to {log_path}")
+
     def add_frame(self, frame: proto.Frame):
-        amps, _phases = frame.amplitude_phase()
+        amps, phases = frame.amplitude_phase()
         active = [a for a in amps if a != 0.0]
         variability = statistics.pstdev(active) if len(active) > 1 else 0.0
 
@@ -75,11 +91,25 @@ class SharedState:
                 del self.history_rssi[:cut]
                 del self.history_variability[:cut]
 
+            self.log_writer.writerow([
+                datetime.now().isoformat(timespec="milliseconds"),
+                round(t, 3),
+                frame.device_us,
+                frame.rssi,
+                frame.channel,
+                int(frame.first_word_invalid),
+                len(amps),
+                ";".join(f"{a:.3f}" for a in amps),
+                ";".join(f"{p:.3f}" for p in phases),
+            ])
+            self.log_file.flush()
+
     def snapshot(self, resync_count, frames_ok):
         with self.lock:
             return {
                 "poll_hint_ms": POLL_HINT_MS,
                 "uptime_s": round(time.time() - self.start_time, 1),
+                "session_start_iso": self.session_start_iso,
                 "frames_ok": frames_ok,
                 "resync_count": resync_count,
                 "recent": list(self.recent),
@@ -163,9 +193,14 @@ def main():
     parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--http-port", type=int, default=8000)
+    parser.add_argument("--data-dir", default=str(Path(__file__).parent / "data"),
+                         help="Where to write the per-session CSV log (default: tools/data/)")
     args = parser.parse_args()
 
-    state = SharedState()
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = Path(args.data_dir) / f"session_{session_id}.csv"
+
+    state = SharedState(log_path)
     stop_event = threading.Event()
 
     reader_thread = threading.Thread(
@@ -190,6 +225,8 @@ def main():
     finally:
         stop_event.set()
         httpd.shutdown()
+        state.log_file.close()
+        print(f"\nStopped. Session log: {log_path}")
 
 
 if __name__ == "__main__":
