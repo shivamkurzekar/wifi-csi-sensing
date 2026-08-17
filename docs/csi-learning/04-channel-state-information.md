@@ -256,12 +256,16 @@ represented as data, and why it needs careful handling (unwrapping,
 statistics) before it's useful. For how a specific system turns this
 noisy physical signal into an actual presence/motion decision — the
 calibration procedure, the subcarrier-selection logic, the hysteresis
-state machine, and what real-hardware testing found — see
-`projects/csi_presence/docs/v1.md` (the document referred to in this
-series' brief as `02-algorithms-and-concepts.md`; at the time of writing
-the project's docs directory contains a single file, `v1.md`, covering
-that ground). For how another system captures and visualizes raw CSI
-over time instead of making a live decision — the amplitude heatmap,
-the RSSI/variability time series, and the auto-detected-band heuristic —
-see `projects/csi_test/docs/v1.md` (likewise referred to as
-`02-algorithms-and-concepts.md` in this series' brief).
+state machine, and what real-hardware testing found — see `csi_presence`'s
+[`v1.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/v1.md)
+and
+[`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/02-algorithms-and-concepts.md).
+For how another system captures and visualizes raw CSI over time instead
+of making a live decision — the amplitude heatmap, the RSSI/variability
+time series, and the auto-detected-band heuristic — see `csi_test`'s
+[`v1.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/v1.md)
+and
+[`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/02-algorithms-and-concepts.md).
+For a third system that does no on-device analysis at all and instead
+streams raw CSI to a live browser viewer — see `analyse_csi`'s
+[`v1.md`](https://github.com/shivamkurzekar/analyse_csi/blob/master/docs/v1.md).
