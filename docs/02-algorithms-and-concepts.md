@@ -12,10 +12,11 @@ if you haven't.
 Two companion documents are referenced throughout rather than repeated
 here:
 
-- [`../../csi_test/docs/02-algorithms-and-concepts.md`](../../csi_test/docs/02-algorithms-and-concepts.md)
+- [`csi_test`'s `docs/02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/02-algorithms-and-concepts.md)
   — the equivalent deep-dive for `csi_test`'s *spatial* variability metric,
-  the sibling approach this project deliberately does not use.
-- [`../../Docs/csi-learning/03-wifi-physics-deep-dive.md`](../../Docs/csi-learning/03-wifi-physics-deep-dive.md)
+  the sibling approach this project deliberately does not use. (A separate
+  repo, not a local path -- linked directly on GitHub.)
+- [`csi-learning/03-wifi-physics-deep-dive.md`](csi-learning/03-wifi-physics-deep-dive.md)
   — the physics of why a WiFi signal's *phase* is sensitive to motion at
   all. This document assumes that physical picture and does not re-derive
   it.
@@ -51,7 +52,7 @@ The physical reason phase is sensitive enough to *use* this way — a
 2.4 GHz wave's wavelength is about 12.5 cm, so even a few centimeters of
 motion produces a significant fraction of a full phase rotation — is
 covered in
-[`03-wifi-physics-deep-dive.md`](../../Docs/csi-learning/03-wifi-physics-deep-dive.md).
+[`03-wifi-physics-deep-dive.md`](csi-learning/03-wifi-physics-deep-dive.md).
 Take it as given here: phase-over-time is a legitimate, sensitive motion
 signal, not a hack.
 
