@@ -1,0 +1,520 @@
+======================================================================
+ESP32-S3 + ESP-IDF Development Cheat Sheet
+======================================================================
+
+Project Root
+------------
+
+~/Projects/esp/
+├── esp-idf/
+├── projects/
+│   ├── blink/
+│   ├── hello_world/
+│   ├── csi_test/
+│   └── ...
+└── downloads/
+
+
+======================================================================
+1. Open Terminal
+======================================================================
+
+cd ~/Projects/esp
+
+
+======================================================================
+2. Load ESP-IDF Environment
+======================================================================
+
+Run this EVERY TIME you open a new terminal.
+
+source ~/Projects/esp/esp-idf/export.sh
+
+Verify:
+
+idf.py --version
+
+Purpose:
+- Adds idf.py to PATH
+- Adds Xtensa compiler to PATH
+- Sets ESP-IDF environment variables
+- Activates Python virtual environment
+
+
+======================================================================
+3. Go to Project
+======================================================================
+
+Example:
+
+cd ~/Projects/esp/projects/blink
+
+or
+
+cd ~/Projects/esp/projects/csi_test
+
+
+======================================================================
+4. Create New Project
+======================================================================
+
+cd ~/Projects/esp/projects
+
+idf.py create-project my_project
+
+
+======================================================================
+5. Copy Official Example
+======================================================================
+
+cp -r ~/Projects/esp/esp-idf/examples/get-started/blink .
+
+
+======================================================================
+6. Set Target (Only Once Per Project)
+======================================================================
+
+idf.py set-target esp32s3
+
+Purpose:
+Creates build configuration for ESP32-S3.
+
+
+======================================================================
+7. Configure Project
+======================================================================
+
+idf.py menuconfig
+
+Common settings:
+
+- Flash Size
+- PSRAM
+- Partition Table
+- Example Configuration
+- GPIO
+- Wi-Fi
+- Logging Level
+
+Save:
+S
+Enter
+
+Exit:
+Q
+
+
+======================================================================
+8. Build
+======================================================================
+
+idf.py build
+
+Output binaries are generated in:
+
+build/
+
+
+======================================================================
+9. Clean Build
+======================================================================
+
+idf.py clean
+
+Removes object files.
+
+
+======================================================================
+10. Full Clean
+======================================================================
+
+idf.py fullclean
+
+Deletes complete build directory.
+
+Use when strange build issues occur.
+
+
+======================================================================
+11. Rebuild From Scratch
+======================================================================
+
+idf.py fullclean
+
+idf.py build
+
+
+======================================================================
+12. Detect ESP32 Serial Port
+======================================================================
+
+ls /dev/ttyACM*
+
+or
+
+ls /dev/ttyUSB*
+
+
+======================================================================
+13. Detect USB Device
+======================================================================
+
+lsusb
+
+
+======================================================================
+14. Watch USB Detection
+======================================================================
+
+dmesg -w
+
+Now plug in the board.
+
+
+======================================================================
+15. Flash Firmware
+======================================================================
+
+idf.py -p /dev/ttyACM0 flash
+
+or
+
+idf.py -p /dev/ttyUSB0 flash
+
+
+======================================================================
+16. Flash and Start Serial Monitor
+======================================================================
+
+idf.py -p /dev/ttyACM0 flash monitor
+
+This is the command you'll use most.
+
+
+======================================================================
+17. Open Serial Monitor Only
+======================================================================
+
+idf.py -p /dev/ttyACM0 monitor
+
+
+======================================================================
+18. Exit Serial Monitor
+======================================================================
+
+Ctrl + ]
+
+Returns to terminal.
+
+
+======================================================================
+19. Serial Monitor Using Picocom
+======================================================================
+
+picocom -b 115200 /dev/ttyACM0
+
+Exit:
+
+Ctrl+A
+
+Ctrl+X
+
+
+======================================================================
+20. Erase Complete Flash
+======================================================================
+
+idf.py -p /dev/ttyACM0 erase-flash
+
+
+======================================================================
+21. Show Flash Information
+======================================================================
+
+esptool.py --chip esp32s3 -p /dev/ttyACM0 flash_id
+
+Shows:
+
+- Flash manufacturer
+- Flash size
+
+
+======================================================================
+22. Show Chip Information
+======================================================================
+
+esptool.py --chip esp32s3 -p /dev/ttyACM0 chip_id
+
+
+======================================================================
+23. Show eFuse Information
+======================================================================
+
+espefuse.py --port /dev/ttyACM0 summary
+
+Shows:
+
+- Chip revision
+- MAC address
+- Security configuration
+- Flash configuration
+
+
+======================================================================
+24. Read Boot Logs
+======================================================================
+
+idf.py -p /dev/ttyACM0 monitor
+
+or
+
+picocom -b 115200 /dev/ttyACM0
+
+
+======================================================================
+25. Fix Serial Port Permission
+======================================================================
+
+sudo usermod -aG dialout $USER
+
+Logout
+
+Login again
+
+Verify:
+
+groups
+
+You should see:
+
+dialout
+
+
+======================================================================
+26. Board Not Detected
+======================================================================
+
+Check:
+
+lsusb
+
+Check:
+
+dmesg -w
+
+Check:
+
+ls /dev/ttyACM*
+
+Try another USB cable.
+
+Try another USB port.
+
+
+======================================================================
+27. Flashing Fails
+======================================================================
+
+Put board into download mode.
+
+Hold:
+
+BOOT
+
+Press:
+
+RESET
+
+Release:
+
+RESET
+
+Release:
+
+BOOT
+
+Run flash again.
+
+
+======================================================================
+28. Development Workflow
+======================================================================
+
+Open Terminal
+
+↓
+
+source ~/Projects/esp/esp-idf/export.sh
+
+↓
+
+cd project
+
+↓
+
+idf.py build
+
+↓
+
+idf.py -p /dev/ttyACM0 flash monitor
+
+↓
+
+Modify code
+
+↓
+
+idf.py build
+
+↓
+
+idf.py -p /dev/ttyACM0 flash monitor
+
+↓
+
+Repeat
+
+
+======================================================================
+29. Frequently Used Commands
+======================================================================
+
+Build
+
+idf.py build
+
+
+Flash
+
+idf.py flash
+
+
+Monitor
+
+idf.py monitor
+
+
+Flash + Monitor
+
+idf.py flash monitor
+
+
+Configure
+
+idf.py menuconfig
+
+
+Set Target
+
+idf.py set-target esp32s3
+
+
+Clean
+
+idf.py clean
+
+
+Full Clean
+
+idf.py fullclean
+
+
+Erase Flash
+
+idf.py erase-flash
+
+
+======================================================================
+30. Project Structure
+======================================================================
+
+project/
+
+├── CMakeLists.txt
+├── sdkconfig
+├── sdkconfig.defaults
+├── build/
+└── main/
+    ├── CMakeLists.txt
+    └── main.c
+
+
+======================================================================
+31. Useful Keyboard Shortcuts
+======================================================================
+
+Exit idf.py Monitor
+
+Ctrl + ]
+
+
+Exit Picocom
+
+Ctrl+A
+
+Ctrl+X
+
+
+Stop Current Command
+
+Ctrl+C
+
+
+Search Command History
+
+Ctrl+R
+
+
+Clear Terminal
+
+Ctrl+L
+
+
+======================================================================
+32. Verify Everything Works
+======================================================================
+
+✓ source export.sh
+
+✓ idf.py --version
+
+✓ lsusb detects board
+
+✓ /dev/ttyACM0 exists
+
+✓ idf.py build succeeds
+
+✓ idf.py flash succeeds
+
+✓ idf.py monitor shows logs
+
+✓ Blink LED runs
+
+✓ Ready for Wi-Fi, CSI and RuView development
+
+
+======================================================================
+33. Learning Order
+======================================================================
+
+1. Hello World
+
+2. Blink LED
+
+3. GPIO Input
+
+4. UART Logging
+
+5. Wi-Fi Station
+
+6. HTTP Client
+
+7. CSI Capture
+
+8. UDP Communication
+
+9. FreeRTOS Tasks
+
+10. RuView Firmware
+
+11. Multi-node CSI Network

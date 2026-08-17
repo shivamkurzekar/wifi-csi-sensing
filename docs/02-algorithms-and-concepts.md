@@ -9,12 +9,17 @@ never touched WiFi CSI, FreeRTOS, or 802.11 internals before.
 For the underlying RF/PHY theory — what OFDM subcarriers are, why a WiFi
 receiver computes a channel estimate at all, what multipath and line-of-sight
 attenuation physically look like — see the physics reference docs at
-`../../Docs/csi-learning/`, in particular
-`../../Docs/csi-learning/00-index.md` for orientation and
-`../../Docs/csi-learning/03-wifi-physics-deep-dive.md` and
-`../../Docs/csi-learning/04-channel-state-information.md` for the theory
+[`csi-learning/`](csi-learning/), in particular
+[`csi-learning/00-index.md`](csi-learning/00-index.md) for orientation and
+[`csi-learning/03-wifi-physics-deep-dive.md`](csi-learning/03-wifi-physics-deep-dive.md) and
+[`csi-learning/04-channel-state-information.md`](csi-learning/04-channel-state-information.md) for the theory
 this project is a hands-on instance of. This document does not re-derive
 that material — it explains the concrete code that implements it.
+
+(These physics docs are shared across this project and its siblings --
+[`csi_presence`](https://github.com/shivamkurzekar/csi_presence) and
+[`analyse_csi`](https://github.com/shivamkurzekar/analyse_csi) -- each repo
+carries its own copy under `docs/csi-learning/` so it's self-contained.)
 
 Everything below was checked against the source as it exists at the time of
 writing: `main/csi_test.c`, `tools/capture_csi.py`, `tools/analyze_csi.py`,
