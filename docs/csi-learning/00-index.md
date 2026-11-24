@@ -8,9 +8,8 @@ already read C and Python but have never had to reason about phase,
 subcarriers, or multipath.
 
 These documents are deliberately separated from each firmware project's
-own documentation, and are duplicated identically into all three
-projects' repos (each is self-contained on GitHub rather than depending
-on a shared local folder). The split is:
+own documentation, and live once at the top of the `wifi-csi-sensing`
+repo, shared by all three project folders. The split is:
 
 - **This directory (`docs/csi-learning/`)** — *why the signal behaves the
   way it does*. Physics, math, and signal-processing theory. No project
@@ -20,16 +19,16 @@ on a shared local folder). The split is:
   that physics into a decision*. Build instructions, the actual C
   structures, the specific algorithm each project runs, real-hardware
   test results, known bugs:
-  - [`csi_test`](https://github.com/shivamkurzekar/csi_test/tree/main/docs) —
-    [`v1.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/v1.md)
+  - [`csi_test`](../../csi_test/docs) —
+    [`v1.md`](../../csi_test/docs/v1.md)
     (overview, build/run) and
-    [`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_test/blob/main/docs/02-algorithms-and-concepts.md)
+    [`02-algorithms-and-concepts.md`](../../csi_test/docs/02-algorithms-and-concepts.md)
     (deep dive)
-  - [`csi_presence`](https://github.com/shivamkurzekar/csi_presence/tree/master/docs) —
-    [`v1.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/v1.md) and
-    [`02-algorithms-and-concepts.md`](https://github.com/shivamkurzekar/csi_presence/blob/master/docs/02-algorithms-and-concepts.md)
-  - [`analyse_csi`](https://github.com/shivamkurzekar/analyse_csi/tree/master/docs) —
-    [`v1.md`](https://github.com/shivamkurzekar/analyse_csi/blob/master/docs/v1.md)
+  - [`csi_presence`](../../csi_presence/docs) —
+    [`v1.md`](../../csi_presence/docs/v1.md) and
+    [`02-algorithms-and-concepts.md`](../../csi_presence/docs/02-algorithms-and-concepts.md)
+  - [`analyse_csi`](../../analyse_csi/docs) —
+    [`v1.md`](../../analyse_csi/docs/v1.md)
     (no separate deep-dive doc yet for this project)
 
 Read this directory first if a term like "subcarrier," "phase
